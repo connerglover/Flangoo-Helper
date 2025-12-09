@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Flangoo Helper
 // @description  A userscript that pushes you towards the correct answer in Flangoo
-// @match        *://*.flangoo.com/reader/*
+// @match        *://*.flangoo.com/*
 // @run-at       document-start
 // ==/UserScript==
 
