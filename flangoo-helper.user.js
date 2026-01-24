@@ -5,6 +5,12 @@
 // @match *://*.flangoo.com/reader/*
 // @run-at document-start
 // @grant none
+=======
+// @name         Flangoo Helper
+// @description  A userscript that pushes you towards the correct answer in Flangoo
+// @match        *://*.flangoo.com/*
+// @run-at       document-start
+>>>>>>> 648e4a07fc931a4ab6f8a27aa49051711a2a91e5
 // ==/UserScript==
 
 (function () {
@@ -106,6 +112,7 @@
         return false; // Always return false for consistency
       },
     });
+<<<<<<< HEAD
 
     Object.defineProperty(document, "visibilityState", {
       get: function () {
@@ -445,4 +452,7 @@
   } else {
     init();
   }
+=======
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+>>>>>>> 648e4a07fc931a4ab6f8a27aa49051711a2a91e5
 })();
