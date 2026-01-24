@@ -1,4 +1,5 @@
 // ==UserScript==
+<<<<<<< HEAD
 // @name Flangoo Helper
 // @description A userscript that bypasses Flangoo's activity monitoring and provides correct answers
 // @match *://*.flangoo.com/reader/*
