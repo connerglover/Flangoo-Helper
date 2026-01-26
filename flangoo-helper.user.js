@@ -1,447 +1,158 @@
 // ==UserScript==
-// @name Flangoo Helper
+// @name        Flangoo Helper
 // @description A userscript that bypasses Flangoo's activity monitoring and provides correct answers
-// @match *://*.flangoo.com/reader/*
-// @run-at document-start
-// @grant none
+// @match       *://*.flangoo.com/reader/*
+// @run-at      document-start
+// @grant       none
 // ==/UserScript==
 
 (function () {
-  "use strict";
-  let correctMap = {};
-  let isQuizActive = false;
-  let mode = "reader"; // 'reader' or 'question'
+    "use strict";
 
-  // Function to check if quiz is active
-  function checkQuizStatus() {
-    const quizContainer = document.querySelector(
-      ".chapter_questions_container",
-    );
-    const wasActive = isQuizActive;
+    // --- 1. THE "HASFOCUS" BYPASS ---
+    // Flangoo's source code: if (!document.hasFocus()) { ... }
+    // We overwrite this function to ALWAYS return true.
+    // This effectively blinds their intervalTimer.
 
-    isQuizActive = quizContainer && quizContainer.classList.contains("active");
-
-    if (wasActive !== isQuizActive) {
-      console.log(
-        `Quiz status changed: \${isQuizActive ? 'ACTIVE' : 'INACTIVE'}`,
-      );
-      mode = isQuizActive ? "question" : "reader";
-      console.log(`Switched to ${mode} mode`);
-
-      if (isQuizActive) {
-        // When quiz becomes active, wait a bit then check for questions
-        setTimeout(() => {
-          console.log("Quiz just became active, checking for questions...");
-          checkForQuestions();
-        }, 1000);
-      }
-    }
-
-    return isQuizActive;
-  }
-
-  // Override activity monitoring functions (only in reader mode)
-  function overrideActivityFunctions() {
-    console.log("Setting up activity monitoring overrides...");
-
-    // Override all possible activity-related functions
-    window.setActive = () => {
-      if (mode === "reader") {
-        console.log("setActive called in reader mode, returning true");
-        return true;
-      }
-      return window.originalSetActive?.() || true;
-    };
-
-    window.setActive_timer_toggle = () => {
-      if (mode === "reader") {
-        console.log(
-          "setActive_timer_toggle called in reader mode, returning true",
-        );
-        return true;
-      }
-      return window.originalSetActive_timer_toggle?.() || true;
-    };
-
-    window.setIdleTime = () => {
-      if (mode === "reader") {
-        console.log("setIdleTime called in reader mode, setting to 0");
-        return 0;
-      }
-      return window.originalSetIdleTime?.() || 0;
-    };
-
-    // Store original functions if they exist
-    if (window.setActive && !window.originalSetActive) {
-      window.originalSetActive = window.setActive;
-    }
-    if (
-      window.setActive_timer_toggle &&
-      !window.originalSetActive_timer_toggle
-    ) {
-      window.originalSetActive_timer_toggle = window.setActive_timer_toggle;
-    }
-    if (window.setIdleTime && !window.originalSetIdleTime) {
-      window.originalSetIdleTime = window.setIdleTime;
-    }
-
-    // Override document.hasFocus correctly - it's a function, not a property
+    // Save original just in case, but we likely won't need it.
     const originalHasFocus = document.hasFocus;
-    document.hasFocus = function () {
-      if (mode === "reader") {
-        console.log("document.hasFocus called in reader mode, returning true");
+
+    // Overwrite on the document instance
+    document.hasFocus = function() {
+        // console.log("[Flangoo Helper] Flangoo checked focus -> Returned TRUE");
         return true;
-      }
-      return originalHasFocus.call(this);
     };
 
-    // Override visibility API to always report visible
-    Object.defineProperty(document, "hidden", {
-      get: function () {
-        if (mode === "reader") {
-          console.log("document.hidden called in reader mode, returning false");
-          return false;
-        }
-        return false; // Always return false for consistency
-      },
-    });
-
-    Object.defineProperty(document, "visibilityState", {
-      get: function () {
-        if (mode === "reader") {
-          console.log(
-            "document.visibilityState called in reader mode, returning visible",
-          );
-          return "visible";
-        }
-        return "visible"; // Always return visible for consistency
-      },
-    });
-
-    // Prevent page visibility events
-    window.addEventListener(
-      "visibilitychange",
-      (e) => {
-        if (mode === "reader") {
-          console.log(
-            "visibilitychange event in reader mode, stopping propagation",
-          );
-          e.stopPropagation();
-        }
-      },
-      true,
-    );
-
-    window.addEventListener(
-      "blur",
-      (e) => {
-        if (mode === "reader") {
-          console.log("blur event in reader mode, stopping propagation");
-          e.stopPropagation();
-        }
-      },
-      true,
-    );
-
-    window.addEventListener(
-      "focus",
-      (e) => {
-        if (mode === "reader") {
-          console.log("focus event in reader mode, stopping propagation");
-          e.stopPropagation();
-        }
-      },
-      true,
-    );
-
-    console.log("Activity monitoring overrides set up complete");
-  }
-
-  // Function to handle questions and extract correct answers
-  function handleQuestions(data) {
-    console.log("handleQuestions called with data:", data);
-
+    // Also try to overwrite on the prototype to be safe
     try {
-      // Extract questions from the response
-      const questions = data?.data?.bookQuestions || [];
-      console.log(`Found ${questions.length} questions in response`);
-
-      questions.forEach((q) => {
-        console.log(`Processing question ${q.id}: ${q.question}`);
-
-        // Find the correct option
-        const correctOption = q.options?.find((o) => o.accepted === true);
-
-        if (correctOption && q.id) {
-          correctMap[q.id] = correctOption.id;
-          console.log(
-            `Found correct answer for question ${q.id}: ${correctOption.id} (\${correctOption.option_txt})`,
-          );
-        } else {
-          console.log(`Could not find correct answer for question \${q.id}`);
-        }
-      });
-
-      console.log("Final correctMap:", correctMap);
-    } catch (err) {
-      console.error("Error handling questions:", err);
-    }
-  }
-
-  // Intercept fetch requests to get question data
-  const origFetch = window.fetch;
-  window.fetch = async (...args) => {
-    const url = args[0];
-    console.log(`Fetch called with URL: ${url}`);
-
-    const resp = await origFetch(...args);
-
-    try {
-      const clone = resp.clone();
-
-      // Check if this is the GraphQL API call for questions
-      if (typeof url === "string" && url.includes("api.flangoo.com/graphql")) {
-        const reqBody = args[1]?.body;
-        console.log("GraphQL request detected, body:", reqBody);
-
-        // Check if this is a request for questions
-        if (reqBody && reqBody.includes("getQuestions")) {
-          console.log("getQuestions request detected, processing response...");
-          const data = await clone.json();
-          console.log("GraphQL response data:", data);
-          handleQuestions(data);
-        }
-      }
-    } catch (err) {
-      console.error("Error in fetch interceptor:", err);
-    }
-
-    return resp;
-  };
-
-  // Function to check for questions on the page
-  /***********************
-   *  SAFE BUTTON UTILS
-   ***********************/
-  function findButtonByText(text) {
-    return [...document.querySelectorAll("button")].find(
-      (btn) =>
-        btn.textContent.trim().toLowerCase() === text.toLowerCase() &&
-        !btn.disabled &&
-        btn.offsetParent !== null,
-    );
-  }
-
-  function waitForButtonAndClick(text, timeout = 5000) {
-    return new Promise((resolve, reject) => {
-      const start = Date.now();
-
-      const observer = new MutationObserver(() => {
-        const btn = findButtonByText(text);
-        if (btn) {
-          console.log(`Found "${text}" button, clicking`);
-          btn.click();
-          observer.disconnect();
-          resolve(true);
-        }
-
-        if (Date.now() - start > timeout) {
-          observer.disconnect();
-          reject(`Timed out waiting for ${text} button`);
-        }
-      });
-
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-      });
-    });
-  }
-
-  /*************************
-   *  MAIN QUESTION HANDLER
-   *************************/
-  function checkForQuestions() {
-    console.log("checkForQuestions fired");
-
-    if (!isQuizActive) {
-      console.log("Quiz inactive, aborting");
-      return;
-    }
-
-    const allOptionButtons = [
-      ...document.querySelectorAll(".option_btn"),
-      ...document.querySelectorAll("button[data-value]"),
-    ];
-
-    console.log(`Found ${allOptionButtons.length} possible option buttons`);
-
-    if (allOptionButtons.length === 0) return;
-
-    const correctValues = Object.values(correctMap);
-
-    for (const btn of allOptionButtons) {
-      const value = btn.getAttribute("data-value");
-      if (!value || !correctValues.includes(value)) continue;
-
-      console.log(`Correct answer found: ${value}`);
-
-      setTimeout(
-        async () => {
-          btn.click();
-          console.log("Answer clicked");
-
-          try {
-            await waitForButtonAndClick("Submit", 3000);
-            await waitForButtonAndClick("Next", 3000);
-          } catch (e) {
-            console.log(e);
-          }
-        },
-        Math.random() * 800 + 200,
-      );
-
-      break;
-    }
-  }
-
-  /*************************
-   *  AUTO-TRIGGER OBSERVER
-   *************************/
-  const quizDomObserver = new MutationObserver(() => {
-    if (mode === "question") {
-      checkForQuestions();
-    }
-  });
-
-  quizDomObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-
-  console.log("Quiz automation loaded");
-
-  // Observer to watch for quiz status changes
-  const quizStatusObserver = new MutationObserver(() => {
-    checkQuizStatus();
-  });
-
-  // Observer to watch for new questions
-  const questionObserver = new MutationObserver(() => {
-    if (isQuizActive) {
-      console.log(
-        "DOM changed while quiz is active, checking for questions...",
-      );
-      checkForQuestions();
-    }
-  });
-
-  // Simulate mouse movement periodically to prevent idle detection
-  function simulateActivity() {
-    const events = [
-      new MouseEvent("mousemove", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }),
-      new MouseEvent("mousedown", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }),
-      new MouseEvent("mouseup", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }),
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }),
-      new KeyboardEvent("keyup", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }),
-    ];
-
-    // Dispatch a random event every 30 seconds only in reader mode
-    setInterval(() => {
-      if (mode === "reader") {
-        const event = events[Math.floor(Math.random() * events.length)];
-        console.log("Simulating activity event in reader mode");
-        document.dispatchEvent(event);
-      }
-    }, 30000);
-  }
-
-  // Function to handle the MCQ button click
-  function handleMCQButtonClick() {
-    const observer = new MutationObserver(() => {
-      const mcqButton = document.querySelector("#multiple_choice_btn");
-
-      if (mcqButton) {
-        console.log("MCQ button found, attaching listener");
-
-        mcqButton.addEventListener("click", () => {
-          console.log("MCQ button clicked, waiting for quiz to activate...");
-          mode = "question";
-          setTimeout(checkQuizStatus, 500);
+        Object.defineProperty(Document.prototype, 'hasFocus', {
+            value: () => true,
+            writable: true,
+            configurable: true
         });
+    } catch (e) { }
 
-        observer.disconnect(); // stop watching once found
-      }
-    });
+    // --- 2. IDLE TIME RESETTER ---
+    // Flangoo's source code: if (idleTime >= 300) ...
+    // We dispatch a fake event every 60 seconds to reset this counter.
+    setInterval(() => {
+        document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true }));
+        document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true }));
+        // console.log("[Flangoo Helper] Reset idle timer");
+    }, 60000);
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  }
 
-  handleMCQButtonClick();
+    // --- 3. STATE MANAGEMENT ---
+    const state = {
+        answers: {}, // QuestionID -> AnswerID
+        loopRunning: false
+    };
 
-  // Initialize the script
-  function init() {
-    console.log("Initializing Flangoo Helper...");
+    // --- 4. NETWORK INTERCEPTOR (Get Answers) ---
+    const origFetch = window.fetch;
+    window.fetch = async (...args) => {
+        const url = args[0];
+        const response = await origFetch(...args);
 
-    // Override activity monitoring functions
-    overrideActivityFunctions();
+        if (typeof url === "string" && url.includes("api.flangoo.com/graphql")) {
+            try {
+                const clone = response.clone();
+                const data = await clone.json();
+                if (data?.data?.bookQuestions) {
+                    data.data.bookQuestions.forEach((q) => {
+                        const correctOpt = q.options?.find((o) => o.accepted === true);
+                        if (correctOpt && q.id) {
+                            state.answers[String(q.id)] = String(correctOpt.id);
+                        }
+                    });
+                    // console.log(`[Flangoo Helper] Answers loaded: ${Object.keys(state.answers).length}`);
+                }
+            } catch (e) {}
+        }
+        return response;
+    };
 
-    // Start observing for quiz status changes
-    quizStatusObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class"],
-    });
+    // --- 5. HELPER: BUTTON FINDER ---
+    function findBtn(textOrSelector) {
+        // Try selector first (fastest)
+        let btn = document.querySelector(textOrSelector);
+        if (btn && btn.offsetParent !== null) return btn;
 
-    // Start observing for questions in the quiz container
-    questionObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+        // Fallback to text search
+        const allBtns = document.querySelectorAll("button, .btn");
+        for (const b of allBtns) {
+            if (b.offsetParent === null || b.disabled) continue;
+            if (b.textContent.toLowerCase().includes(textOrSelector.toLowerCase())) return b;
+        }
+        return null;
+    }
 
-    // Start activity simulation
-    simulateActivity();
+    // --- 6. THE LOGIC LOOP ---
+    function gameLoop() {
+        requestAnimationFrame(gameLoop);
 
-    // Set up MCQ button listener
-    setTimeout(handleMCQButtonClick, 5000);
+        // --- PRIORITY 1: NEXT BUTTON ---
+        // If "Next" is there, we are done. Click it.
+        const nextBtn = findBtn("Next");
+        if (nextBtn) {
+            nextBtn.click();
+            return;
+        }
 
-    // Check initial quiz status
-    setTimeout(() => {
-      console.log("Checking initial quiz status...");
-      checkQuizStatus();
-    }, 3000);
+        // --- PRIORITY 2: FIND QUESTIONS ---
+        const options = Array.from(document.querySelectorAll(".option_btn, button[data-value]"));
+        if (options.length === 0) return; // No quiz visible
 
-    console.log("Flangoo Helper initialized");
-  }
+        // Find the correct answer ID for the current visible question
+        // We look at the first option to find the question ID if possible,
+        // or just brute force check against our answer list.
+        let targetBtn = null;
+        const correctValues = Object.values(state.answers);
 
-  // Wait for the page to load before initializing
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+        for (const opt of options) {
+            const val = String(opt.getAttribute("data-value"));
+            if (correctValues.includes(val)) {
+                targetBtn = opt;
+                break;
+            }
+        }
+
+        if (!targetBtn) return; // We don't know the answer yet
+
+        // --- PRIORITY 3: CHECK STATUS ---
+        // Is the correct answer ALREADY selected?
+        const isSelected = targetBtn.classList.contains("selected") ||
+                           targetBtn.classList.contains("active") ||
+                           targetBtn.style.backgroundColor === "rgb(76, 175, 80)"; // Green
+
+        if (!isSelected) {
+            // STEP A: If not selected, CLICK THE ANSWER
+            // (We explicitly ignore the submit button here)
+            targetBtn.click();
+
+            // Force events for React/Frameworks
+            targetBtn.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}));
+            targetBtn.dispatchEvent(new MouseEvent("mouseup", {bubbles:true}));
+        } else {
+            // STEP B: If (and ONLY if) it is selected, CLICK SUBMIT
+            // We use the specific class you gave: .btn-success
+            const submitBtn = document.querySelector(".btn-success") || findBtn("Submit Answer") || findBtn("Check");
+
+            if (submitBtn) {
+                submitBtn.click();
+                submitBtn.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}));
+                submitBtn.dispatchEvent(new MouseEvent("mouseup", {bubbles:true}));
+            }
+        }
+    }
+
+    // --- 7. START ---
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(gameLoop));
+    } else {
+        requestAnimationFrame(gameLoop);
+    }
+
+    // console.log("Flangoo Helper Loaded");
+
 })();
