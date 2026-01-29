@@ -9,46 +9,107 @@
 (function () {
     "use strict";
 
-    // --- 1. THE "HASFOCUS" BYPASS ---
-    // Flangoo's source code: if (!document.hasFocus()) { ... }
-    // We overwrite this function to ALWAYS return true.
-    // This effectively blinds their intervalTimer.
-
-    // Save original just in case, but we likely won't need it.
-    const originalHasFocus = document.hasFocus;
-
-    // Overwrite on the document instance
-    document.hasFocus = function() {
-        // console.log("[Flangoo Helper] Flangoo checked focus -> Returned TRUE");
-        return true;
-    };
-
-    // Also try to overwrite on the prototype to be safe
-    try {
-        Object.defineProperty(Document.prototype, 'hasFocus', {
-            value: () => true,
-            writable: true,
-            configurable: true
-        });
-    } catch (e) { }
-
-    // --- 2. IDLE TIME RESETTER ---
-    // Flangoo's source code: if (idleTime >= 300) ...
-    // We dispatch a fake event every 60 seconds to reset this counter.
-    setInterval(() => {
-        document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true }));
-        document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true }));
-        // console.log("[Flangoo Helper] Reset idle timer");
-    }, 60000);
-
-
-    // --- 3. STATE MANAGEMENT ---
+    // --- STATE MANAGEMENT ---
     const state = {
-        answers: {}, // QuestionID -> AnswerID
-        loopRunning: false
+        answers: {}, // Stores QuestionID -> AnswerID
+        lastAction: 0, // For debounce
     };
 
-    // --- 4. NETWORK INTERCEPTOR (Get Answers) ---
+    // ==========================================
+    // 1. ACTIVITY BYPASS
+    // ==========================================
+
+    function overrideActivityFunctions() {
+        // console.log("[FH] Setting up activity monitoring overrides...");
+
+        // Override global timer variables/functions
+        window.setActive = () => {
+            // console.log("[FH] setActive blocked");
+            return true;
+        };
+
+        window.setActive_timer_toggle = () => {
+            return true;
+        };
+
+        window.setIdleTime = () => {
+            return 0;
+        };
+
+        // Override document.hasFocus (It's a function, not a property)
+        const originalHasFocus = document.hasFocus;
+        document.hasFocus = function () {
+            return true;
+        };
+
+        // Override visibility API
+        Object.defineProperty(document, "hidden", {
+            get: function () {
+                return false;
+            },
+            configurable: true,
+        });
+
+        Object.defineProperty(document, "visibilityState", {
+            get: function () {
+                return "visible";
+            },
+            configurable: true,
+        });
+
+        // Stop propagation of "away" events
+        const stopEvent = (e) => {
+            e.stopPropagation();
+            // console.log(`[FH] Stopped ${e.type} event`);
+        };
+
+        window.addEventListener("visibilitychange", stopEvent, true);
+        window.addEventListener("blur", stopEvent, true);
+        window.addEventListener("focus", stopEvent, true);
+        window.addEventListener("mouseleave", stopEvent, true);
+
+        // console.log("[FH] Activity overrides active.");
+    }
+
+    // Simulate mouse movement (Original method)
+    function simulateActivity() {
+        const events = [
+            new MouseEvent("mousemove", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+            }),
+            new MouseEvent("mousedown", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+            }),
+            new MouseEvent("mouseup", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+            }),
+            new KeyboardEvent("keydown", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+            }),
+            new KeyboardEvent("keyup", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+            }),
+        ];
+
+        setInterval(() => {
+            const event = events[Math.floor(Math.random() * events.length)];
+            document.dispatchEvent(event);
+        }, 25000); // Slightly faster than original 30s to be safe
+    }
+
+    // ==========================================
+    // 2. NETWORK INTERCEPTOR (Get Answers)
+    // ==========================================
     const origFetch = window.fetch;
     window.fetch = async (...args) => {
         const url = args[0];
@@ -65,94 +126,112 @@
                             state.answers[String(q.id)] = String(correctOpt.id);
                         }
                     });
-                    // console.log(`[Flangoo Helper] Answers loaded: ${Object.keys(state.answers).length}`);
+                    // console.log(`[FH] Answers loaded: ${Object.keys(state.answers).length}`,);
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
         return response;
     };
 
-    // --- 5. HELPER: BUTTON FINDER ---
-    function findBtn(textOrSelector) {
-        // Try selector first (fastest)
-        let btn = document.querySelector(textOrSelector);
-        if (btn && btn.offsetParent !== null) return btn;
+    // ==========================================
+    // 3. QUIZ SOLVER
+    // ==========================================
 
-        // Fallback to text search
-        const allBtns = document.querySelectorAll("button, .btn");
-        for (const b of allBtns) {
-            if (b.offsetParent === null || b.disabled) continue;
-            if (b.textContent.toLowerCase().includes(textOrSelector.toLowerCase())) return b;
+    function findBtn(textSelector) {
+        // 1. Try generic button search
+        const buttons = document.querySelectorAll("button, .btn");
+        for (const btn of buttons) {
+            if (btn.offsetParent !== null && !btn.disabled) {
+                if (
+                    btn.textContent.toLowerCase().includes(textSelector.toLowerCase())
+                ) {
+                    return btn;
+                }
+            }
         }
         return null;
     }
 
-    // --- 6. THE LOGIC LOOP ---
     function gameLoop() {
         requestAnimationFrame(gameLoop);
 
-        // --- PRIORITY 1: NEXT BUTTON ---
-        // If "Next" is there, we are done. Click it.
+        // Debounce to prevent double-clicks (50ms)
+        if (Date.now() - state.lastAction < 50) return;
+
+        // --- STEP 1: NEXT BUTTON ---
+        // If "Next" exists, click it immediately.
         const nextBtn = findBtn("Next");
         if (nextBtn) {
+            //   console.log("[FH] Clicking Next");
             nextBtn.click();
+            state.lastAction = Date.now();
             return;
         }
 
-        // --- PRIORITY 2: FIND QUESTIONS ---
-        const options = Array.from(document.querySelectorAll(".option_btn, button[data-value]"));
-        if (options.length === 0) return; // No quiz visible
+        // --- STEP 2: HANDLE QUESTIONS ---
+        const options = Array.from(
+            document.querySelectorAll(".option_btn, button[data-value]"),
+        );
+        if (options.length === 0) return; // No questions visible
 
-        // Find the correct answer ID for the current visible question
-        // We look at the first option to find the question ID if possible,
-        // or just brute force check against our answer list.
-        let targetBtn = null;
-        const correctValues = Object.values(state.answers);
+        // Check if an option is ALREADY selected
+        // Flangoo adds 'active', 'selected', or changes background color
+        const selectedOption = options.find(
+            (opt) =>
+                opt.classList.contains("selected") ||
+                opt.classList.contains("active") ||
+                opt.style.backgroundColor === "rgb(76, 175, 80)",
+        );
 
-        for (const opt of options) {
-            const val = String(opt.getAttribute("data-value"));
-            if (correctValues.includes(val)) {
-                targetBtn = opt;
-                break;
-            }
-        }
-
-        if (!targetBtn) return; // We don't know the answer yet
-
-        // --- PRIORITY 3: CHECK STATUS ---
-        // Is the correct answer ALREADY selected?
-        const isSelected = targetBtn.classList.contains("selected") ||
-                           targetBtn.classList.contains("active") ||
-                           targetBtn.style.backgroundColor === "rgb(76, 175, 80)"; // Green
-
-        if (!isSelected) {
-            // STEP A: If not selected, CLICK THE ANSWER
-            // (We explicitly ignore the submit button here)
-            targetBtn.click();
-
-            // Force events for React/Frameworks
-            targetBtn.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}));
-            targetBtn.dispatchEvent(new MouseEvent("mouseup", {bubbles:true}));
-        } else {
-            // STEP B: If (and ONLY if) it is selected, CLICK SUBMIT
-            // We use the specific class you gave: .btn-success
-            const submitBtn = document.querySelector(".btn-success") || findBtn("Submit Answer") || findBtn("Check");
+        if (selectedOption) {
+            // --- STEP 3: SUBMIT ---
+            // If an answer is selected, we look for the Submit button.
+            // We look for the specific .btn-success class or text "Submit Answer"
+            const submitBtn =
+                document.querySelector(".btn-success") ||
+                findBtn("Submit Answer") ||
+                findBtn("Check");
 
             if (submitBtn) {
+                // console.log("[FH] Submitting...");
                 submitBtn.click();
-                submitBtn.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}));
-                submitBtn.dispatchEvent(new MouseEvent("mouseup", {bubbles:true}));
+                // Force event dispatch for React
+                submitBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+                submitBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+                state.lastAction = Date.now();
+            }
+        } else {
+            // --- STEP 4: SELECT ANSWER ---
+            // If nothing is selected, we find the correct answer and click it.
+            const correctIds = Object.values(state.answers);
+
+            for (const opt of options) {
+                const val = String(opt.getAttribute("data-value"));
+                if (correctIds.includes(val)) {
+                    //   console.log(`[FH] Selecting answer: ${val}`);
+                    opt.click();
+                    opt.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+                    opt.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+                    state.lastAction = Date.now();
+                    break; // Stop after clicking one
+                }
             }
         }
     }
 
-    // --- 7. START ---
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(gameLoop));
-    } else {
+    // ==========================================
+    // 4. INITIALIZATION
+    // ==========================================
+    function init() {
+        // console.log("[FH] Initializing...");
+        overrideActivityFunctions();
+        simulateActivity();
         requestAnimationFrame(gameLoop);
     }
 
-    // console.log("Flangoo Helper Loaded");
-
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+    } else {
+        init();
+    }
 })();
