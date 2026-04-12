@@ -14,7 +14,7 @@ A userscript that analyzes incoming packets on Flangoo to determine answers and 
 
 ## Installation
 
-(Due to changes in chrome manifest V3, [Brave browser][https://brave.com/download/] is recommended)
+(Due to changes in Chrome manifest V3, [Brave Browser](https://brave.com/download/) is recommended)
 
 1. First you need a Browser Extension for managing UserScripts (skip if you already have one):
    * Chrome (or other Chromium Browsers): [Violentmonkey](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag) or [Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
