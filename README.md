@@ -24,3 +24,13 @@ A userscript that analyzes incoming packets on Flangoo to determine answers and 
 2. Install [Flangoo Helper](https://github.com/connerglover/Flangoo-Helper/raw/refs/heads/main/flangoo-helper.user.js).
 
 3. Open [Flangoo](https://flangoo.com/) and enjoy!
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=connerglover%2FFlangoo-Helper&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=connerglover/Flangoo-Helper&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=connerglover/Flangoo-Helper&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=connerglover/Flangoo-Helper&type=date&legend=top-left" />
+ </picture>
+</a>
