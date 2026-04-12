@@ -187,10 +187,7 @@
             // --- STEP 3: SUBMIT ---
             // If an answer is selected, we look for the Submit button.
             // We look for the specific .btn-success class or text "Submit Answer"
-            const submitBtn =
-                document.querySelector(".btn-success") ||
-                findBtn("Submit Answer") ||
-                findBtn("Check");
+            const submitBtn = document.querySelectorAll('button[class*="btn-success"]')[1];
 
             if (submitBtn) {
                 // console.log("[FH] Submitting...");
