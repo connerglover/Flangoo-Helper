@@ -16,7 +16,7 @@ A userscript that analyzes incoming packets on Flangoo to determine answers and 
 
 (Due to changes in chrome manifest V3, [Brave browser][https://brave.com/download/] is recommended)
 
-1. First you need a Browser Extension for managing UserScripts[[1]][userscrips_faq] (skip if you already have one):
+1. First you need a Browser Extension for managing UserScripts (skip if you already have one):
    * Chrome (or other Chromium Browsers): [Violentmonkey](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag) or [Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
    * Firefox: [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/), [Greasemonkey](https://addons.mozilla.org/en-US/firefox/addon/greasemonkey/), or [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)  
    * Safari: [Userscripts](https://apps.apple.com/us/app/userscripts/id1463298887)
