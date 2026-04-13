@@ -10,7 +10,6 @@ A userscript that analyzes incoming packets on Flangoo to determine answers and 
 - **✅ Dynamic Answer Collection:** Incoming packets are collected to determine the correct answers for your multiple choice questions.
 - **🤖 Automatic Input:** Collected answers are conveniently inputted automatically, making your Flangoo Helper experience seamless.
 - **💤 Activity Bypass:** Flangoo Helper manipulates local variables to make Flangoo count time without consistent activity.
-- **🤫 Discreet Interface:** Flango Helper operates completely in the background without an interface, so it can even be used during surveilance.
 
 ## Installation
 
